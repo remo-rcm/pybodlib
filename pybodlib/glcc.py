@@ -30,18 +30,14 @@ The data dimensions of the Interrupted Goode Homolosine projection for the globa
 
 
 import numpy as np
+import rasterio
 import xarray as xr
 
-
-class glcc_grid:
-    # 17,347 lines (rows) and 40,031
-    ny = 17347
-    nx = 40031
-    line = 8676
-    R = 6370997.0
+from .transform import transform_xy
+from .utils import glcc_grid
 
 
-class OlsonGlobalEcosystemLegend:
+class OlsonGlobalEcosystem:
     classes = {
         0: "INTERRUPTED AREAS (GLOBAL GOODES HOMOLOSINE PROJECTION)",
         1: "URBAN",
@@ -144,44 +140,38 @@ class OlsonGlobalEcosystemLegend:
     }
 
 
-def read_img(filename):
-    """Read DEM file
+def create_dataset(tif=None, add_coords=True):
+    """Creates an xarray dataset from GLCC geotif."""
+    if tif is None:
+        tif = "/work/ch0636/g300046/glcc/glccgbg20_tif/gbogeg20.tif"
 
-    The DEM is provided as 16-bit signed integer data in a simple binary raster.
-    There are no header or trailer bytes imbedded in the image.  The data are
-    stored in row major order (all the data for row 1, followed by all the data
-    for row 2, etc.).
+    print(f"reading: {tif}")
+    with rasterio.open(tif) as img:
+        data = img.read()
+        crs = img.crs
 
-    """
-    with open(filename, "r") as f:
-        a = np.fromfile(f, dtype="uint8")
-    return a
+    print("creating dataset")
+    ds = to_dataset(np.squeeze(data))
+    crs = crs.to_proj4()
+    ds.attrs["proj4"] = crs
 
+    if add_coords is True:
+        print(f"creating coordinates from crs: {crs}")
+        lat, lon = transform_xy(ds, crs)
+        ds = ds.assign_coords(
+            lon=lon.where(~np.isinf(lon)), lat=lat.where(~np.isinf(lat))
+        )
 
-def to_dataarray(data, nx, ny, types):
-    """Create a data array from DEM data.
-
-    Reshape data and flip into human readable format.
-    Also add coordinate information.
-
-    """
-    x = np.linspace(-20015000.0, 20015000.0, nx)
-    y = np.linspace(-8673000.0, 8673000.0, ny)
-    data = np.flipud(data.reshape((ny, nx)))
-    da = xr.DataArray(
-        data=data,
-        dims=("y", "x", "index"),
-        coords=dict(x=(("x"), x), y=(("y"), y), index=(("index"), list(types.keys()))),
-    )
-    da.name = "type"
-    return da.chunk({"x": 1000, "y": 1000})
+    return ds
 
 
-def to_dataset(data, nx, ny, types):
-    x = np.linspace(-20015000.0, 20015000.0, nx)
-    y = np.linspace(-8673000.0, 8673000.0, ny)
-    data = np.flipud(data.reshape((ny, nx)))  # .astype(np.float64)
-    # data[data == 0.] = np.nan
+def to_dataset(data):
+    # create grid
+    x = np.linspace(*glcc_grid.x)
+    y = np.linspace(*glcc_grid.y)
+
+    data = np.flipud(data)
+
     ds = xr.Dataset(
         data_vars=dict(
             glcc=(["y", "x"], data),
@@ -189,10 +179,8 @@ def to_dataset(data, nx, ny, types):
         coords=dict(
             x=(["x"], x),
             y=(["y"], y),
-            index=(["index"], list(types.keys())),
-            type=(["index"], list(types.values())),
-            #      time=time,
-            #      reference_time=reference_time,
+            index=(["index"], list(OlsonGlobalEcosystem.classes.keys())),
+            type=(["index"], list(OlsonGlobalEcosystem.classes.values())),
         ),
         attrs=dict(
             description="Global Land Cover Characteristics Data Base Version 2.0."
@@ -200,7 +188,7 @@ def to_dataset(data, nx, ny, types):
     )
     ds.x.attrs["axis"] = "X"
     ds.y.attrs["axis"] = "Y"
-    return ds.chunk({"x": 1000, "y": 1000})
+    return ds.chunk(glcc_grid.chunks)
 
 
 def glcc_legend(url):
@@ -213,3 +201,24 @@ def glcc_legend(url):
         s = line.strip().split(" ", 1)
         classes[int(s[0])] = s[1]
     return name, classes
+
+
+def plot(da):
+    from cartopy import crs as ccrs
+    from matplotlib import pyplot as plt
+
+    transform = ccrs.InterruptedGoodeHomolosine()
+
+    xlocs = range(-180, 180, 10)
+    ylocs = range(-90, 90, 5)
+
+    plt.figure(figsize=(20, 10))
+    ax = plt.axes(projection=transform)
+
+    ax.gridlines(
+        draw_labels=True, linewidth=0.5, color="gray", xlocs=xlocs, ylocs=ylocs
+    )
+    da.plot(ax=ax, transform=transform)
+    ax.coastlines(resolution="110m", color="blue", linewidth=1)
+
+    return plt
