@@ -59,6 +59,8 @@ import xarray as xr
 from .transform import transform_bounds, transform_yx
 from .utils import glcc_grid
 
+# xr.set_options(keep_attrs=True)
+
 
 class OlsonGlobalEcosystem:
     classes = {
@@ -177,16 +179,28 @@ def create_dataset(tif=None, coords=True, bounds=True):
     ds = to_dataset(np.squeeze(data))
     crs = crs.to_proj4()
     ds.attrs["proj4"] = crs
+    ds.x.attrs["axis"] = "X"
+    ds.x.attrs["units"] = "m"
+    ds.y.attrs["axis"] = "Y"
+    ds.y.attrs["units"] = "m"
 
     if coords is True:
         print(f"creating coordinates from crs: {crs}")
         lat, lon = transform_yx(ds.y, ds.x, crs)
         ds = ds.assign_coords(lon=lon, lat=lat)
+        ds.lat.attrs["standard_name"] = "latitude"
+        ds.lat.attrs["units"] = "degrees_north"
+        ds.lon.attrs["standard_name"] = "longitude"
+        ds.lon.attrs["units"] = "degrees_east"
 
     if bounds is True:
         print(f"creating bounds from crs: {crs}")
         ds = ds.cf.add_bounds(("y", "x"))
-        yv, xv = transform_bounds(ds.y_bounds, ds.x_bounds, crs)
+        yv, xv = transform_bounds(
+            ds.reset_coords(("x_bounds", "y_bounds")).y_bounds,
+            ds.reset_coords(("x_bounds", "y_bounds")).x_bounds,
+            crs,
+        )
         ds = ds.assign_coords(
             lon_bounds=xv.transpose(..., "vertices"),
             lat_bounds=yv.transpose(..., "vertices"),
@@ -210,14 +224,13 @@ def to_dataset(data):
             x=(["x"], x),
             y=(["y"], y),
             index=(["index"], list(OlsonGlobalEcosystem.classes.keys())),
-            type=(["index"], list(OlsonGlobalEcosystem.classes.values())),
+            classification=(["index"], list(OlsonGlobalEcosystem.classes.values())),
         ),
         attrs=dict(
             description="Global Land Cover Characteristics Data Base Version 2.0."
         ),
     )
-    ds.x.attrs["axis"] = "X"
-    ds.y.attrs["axis"] = "Y"
+
     return ds.chunk(glcc_grid.chunks)
 
 

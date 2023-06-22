@@ -28,7 +28,7 @@ def transform_yx(y, x, crs):
         kwargs={},
     )
 
-    return ~np.isinf(yt), ~np.isinf(xt)
+    return yt.where(~np.isinf(yt)), xt.where(~np.isinf(xt))
 
 
 def transform_bounds(y_bounds, x_bounds, crs):
