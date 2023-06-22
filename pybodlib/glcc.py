@@ -3,7 +3,14 @@ GLCC
 
 Geographic Projection Parameters
 
-The data dimensions of the Geographic projection for the global land cover characteristics data set are 21,600 lines (rows) and 43,200 samples (columns) resulting in a data set size of approximately 933 megabytes for 8-bit (byte) images. The following is a summary of the map projection parameters used for the Geographic projection: Projection Type: Geographic
+The data dimensions of the Geographic projection for the global
+land cover characteristics data set are 21,600 lines (rows) and
+43,200 samples (columns) resulting in a data set size of
+approximately 933 megabytes for 8-bit (byte) images.
+The following is a summary of the map projection parameters
+used for the Geographic projection:
+
+Projection Type: Geographic
 
     Units of measure: arc seconds
     Pixel Size: 30 arc seconds
@@ -12,11 +19,25 @@ The data dimensions of the Geographic projection for the global land cover chara
         Lower left: (-647985, -323985)
         Upper left: (-647985, 323985)
         Upper right: (647985, 323985)
-        Lower right: (647985, -323985) Please Note: The geographic projection is not an equal-area projection, in contrast with the Interrupted Goode Homolosine projection. Users should be advised that area statistics calculated from data in the Geographic projection will not be correct because of the areal distortion inherent to this projection.
+        Lower right: (647985, -323985)
+
+Please Note: The geographic projection is not an equal-area projection,
+in contrast with the Interrupted Goode Homolosine projection.
+Users should be advised that area statistics calculated from data in
+the Geographic projection will not be correct because of the areal
+distortion inherent to this projection.
+
 
 Interrupted Goode Homolosine Projection Parameters
 
-The data dimensions of the Interrupted Goode Homolosine projection for the global land cover characteristics data set are 17,347 lines (rows) and 40,031 samples (columns) resulting in a data set size of approximately 695 megabytes for 8-bit (byte) images. The following is a summary of the map projection parameters used for the Interrupted Goode Homolosine projection: Projection Type: Interrupted Goode Homolosine
+The data dimensions of the Interrupted Goode Homolosine projection
+for the global land cover characteristics data set are 17,347
+lines (rows) and 40,031 samples (columns) resulting in a data set
+size of approximately 695 megabytes for 8-bit (byte) images.
+The following is a summary of the map projection parameters used
+for the Interrupted Goode Homolosine projection:
+
+Projection Type: Interrupted Goode Homolosine
 
     Units of measure: meters
     Pixel Size: 1000 meters
@@ -26,14 +47,16 @@ The data dimensions of the Interrupted Goode Homolosine projection for the globa
         Upper left: (-20015000, 8673000)
         Upper right: (20015000, 8673000)
         Lower right: (20015000, -8673000)
+
 """
 
 
+import cf_xarray as cfxr  # noqa
 import numpy as np
 import rasterio
 import xarray as xr
 
-from .transform import transform_xy
+from .transform import transform_bounds, transform_yx
 from .utils import glcc_grid
 
 
@@ -140,7 +163,7 @@ class OlsonGlobalEcosystem:
     }
 
 
-def create_dataset(tif=None, add_coords=True):
+def create_dataset(tif=None, coords=True, bounds=True):
     """Creates an xarray dataset from GLCC geotif."""
     if tif is None:
         tif = "/work/ch0636/g300046/glcc/glccgbg20_tif/gbogeg20.tif"
@@ -155,11 +178,18 @@ def create_dataset(tif=None, add_coords=True):
     crs = crs.to_proj4()
     ds.attrs["proj4"] = crs
 
-    if add_coords is True:
+    if coords is True:
         print(f"creating coordinates from crs: {crs}")
-        lat, lon = transform_xy(ds, crs)
+        lat, lon = transform_yx(ds.y, ds.x, crs)
+        ds = ds.assign_coords(lon=lon, lat=lat)
+
+    if bounds is True:
+        print(f"creating bounds from crs: {crs}")
+        ds = ds.cf.add_bounds(("y", "x"))
+        yv, xv = transform_bounds(ds.y_bounds, ds.x_bounds, crs)
         ds = ds.assign_coords(
-            lon=lon.where(~np.isinf(lon)), lat=lat.where(~np.isinf(lat))
+            lon_bounds=xv.transpose(..., "vertices"),
+            lat_bounds=yv.transpose(..., "vertices"),
         )
 
     return ds
@@ -204,6 +234,7 @@ def glcc_legend(url):
 
 
 def plot(da):
+    """Plots data in Interrupted Goode Homolosine projection"""
     from cartopy import crs as ccrs
     from matplotlib import pyplot as plt
 
