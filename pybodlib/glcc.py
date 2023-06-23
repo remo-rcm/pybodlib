@@ -205,6 +205,13 @@ def create_dataset(tif=None, coords=True, bounds=True):
             lon_bounds=xv.transpose(..., "vertices"),
             lat_bounds=yv.transpose(..., "vertices"),
         )
+        ds.lat.attrs["bounds"] = "lat_bounds"
+        ds.lon.attrs["bounds"] = "lon_bounds"
+
+    ds.x.attrs["axis"] = "X"
+    ds.x.attrs["units"] = "m"
+    ds.y.attrs["axis"] = "Y"
+    ds.y.attrs["units"] = "m"
 
     return ds
 
