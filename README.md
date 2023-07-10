@@ -2,6 +2,8 @@
 
 Insights from the bodlibkit implemented in python.
 
+* Includes prototype for [resampling GLCC to the EURO-CORDEX domain](https://nbviewer.org/github/remo-rcm/pybodlib/blob/main/notebooks/resample-glcc.ipynb).
+
 ## Global Land Cover Characterization (GLCC) 
 
 The surface library derives land cover classes from the USGS GLCC[^1] datasets.
